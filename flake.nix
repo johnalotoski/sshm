@@ -169,6 +169,7 @@
 
       devShells.default = pkgs.mkShell {
         packages = with pkgs; [
+          alejandra
           icdiff
           treefmtEval.config.package
           sshm
@@ -177,12 +178,12 @@
         shellHook = ''
           if ! [ -f treefmt.toml ]; then
             echo "Linking treefmt.toml"
-            ln -sf ${treefmtEval.config.build.configFile} treefmt.toml
+            cp -f ${treefmtEval.config.build.configFile} treefmt.toml
           else
             if ! $(cmp -s ${treefmtEval.config.build.configFile} treefmt.toml); then
               echo "Re-linking treefmt.toml for an update.  Difference between old and new treefmt.toml is:"
               icdiff treefmt.toml ${treefmtEval.config.build.configFile}
-              ln -sf ${treefmtEval.config.build.configFile} treefmt.toml
+              cp -f ${treefmtEval.config.build.configFile} treefmt.toml
             else
               echo "treefmt.toml is up to date"
             fi

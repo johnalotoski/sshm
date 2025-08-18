@@ -1,1 +1,19 @@
-/nix/store/1adngd1syfq8j787knis8gqv5z0d1q0a-treefmt.toml
+[formatter.alejandra]
+command = "/nix/store/nhndh6dqv8h5yfqm8jqar5fjvvmnqkqh-alejandra-4.0.0/bin/alejandra"
+excludes = []
+includes = ["*.nix"]
+options = []
+
+[global]
+excludes = [
+    "*.lock",
+    "*.patch",
+    "package-lock.json",
+    "go.mod",
+    "go.sum",
+    ".gitignore",
+    ".gitmodules",
+    ".hgignore",
+    ".svnignore",
+]
+on-unmatched = "warn"
