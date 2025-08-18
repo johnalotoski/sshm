@@ -177,11 +177,11 @@
 
         shellHook = ''
           if ! [ -f treefmt.toml ]; then
-            echo "Linking treefmt.toml"
+            echo "Copying treefmt.toml"
             cp -f ${treefmtEval.config.build.configFile} treefmt.toml
           else
             if ! $(cmp -s ${treefmtEval.config.build.configFile} treefmt.toml); then
-              echo "Re-linking treefmt.toml for an update.  Difference between old and new treefmt.toml is:"
+              echo "Re-copying treefmt.toml for an update.  The difference between old and new treefmt.toml is:"
               icdiff treefmt.toml ${treefmtEval.config.build.configFile}
               cp -f ${treefmtEval.config.build.configFile} treefmt.toml
             else
