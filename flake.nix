@@ -72,6 +72,26 @@
             hash = "sha256-UyBXF+x7ouigsQ7HvKdUZnIMcU9HwDYvtW+BxjasPfY=";
           };
         in {
+          inherit
+            (python.pkgs)
+            annotated-types
+            black
+            click
+            iniconfig
+            isort
+            markdown-it-py
+            mypy
+            paramiko
+            pathspec
+            pyyaml
+            shellingham
+            ;
+
+          typing_extensions =
+            if self ? "typing-extensions"
+            then self."typing-extensions"
+            else super.typing_extensions;
+
           bcrypt = let
             cargoVendor = pkgs.rustPlatform.fetchCargoVendor {
               pname = "bcrypt";
@@ -141,6 +161,27 @@
             nativeBuildInputs = [python.pkgs.flit-core];
             doCheck = false;
             pythonImportsCheck = ["packaging"];
+          };
+
+          pre-commit = python.pkgs.toPythonModule pkgs.pre-commit;
+
+          typer = python.pkgs.buildPythonPackage rec {
+            pname = "typer";
+            version = "0.12.5";
+            src = python.pkgs.fetchPypi {
+              inherit pname version;
+              hash = "sha256-9ZLwib7cyOwbl0El1khRApw7GvFF8ErKZNaUEPDJtyI=";
+            };
+            pyproject = true;
+            nativeBuildInputs = [python.pkgs.pdm-backend];
+            propagatedBuildInputs = with self; [
+              click
+              rich
+              shellingham
+              typing-extensions
+            ];
+            doCheck = false;
+            pythonImportsCheck = ["typer"];
           };
         });
       };
