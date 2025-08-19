@@ -142,6 +142,33 @@
             doCheck = false;
             pythonImportsCheck = ["packaging"];
           };
+
+          typer = python.pkgs.buildPythonPackage rec {
+            pname = "typer";
+            version = "0.12.5";
+            src = python.pkgs.fetchPypi {
+              inherit pname version;
+              hash = "sha256-9ZLwib7cyOwbl0El1khRApw7GvFF8ErKZNaUEPDJtyI=";
+            };
+            pyproject = true;
+            nativeBuildInputs = [python.pkgs.pdm-backend];
+            propagatedBuildInputs = with self; [
+              click
+              rich
+              shellingham
+              typing-extensions
+            ];
+            doCheck = false;
+            pythonImportsCheck = ["typer"];
+          };
+
+          annotated-types = python.pkgs.annotated-types;
+          black = python.pkgs.black;
+          click = python.pkgs.click;
+          paramiko = python.pkgs.paramiko;
+          pre-commit = python.pkgs.toPythonModule pkgs.pre-commit;
+          pyyaml = python.pkgs.pyaml;
+          shellingham = python.pkgs.shellingham;
         });
       };
 
