@@ -77,13 +77,20 @@
             annotated-types
             black
             click
+            iniconfig
             isort
             markdown-it-py
             mypy
             paramiko
+            pathspec
             pyyaml
             shellingham
             ;
+
+          typing_extensions =
+            if self ? "typing-extensions"
+            then self."typing-extensions"
+            else super.typing_extensions;
 
           bcrypt = let
             cargoVendor = pkgs.rustPlatform.fetchCargoVendor {
