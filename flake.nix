@@ -72,6 +72,8 @@
             hash = "sha256-UyBXF+x7ouigsQ7HvKdUZnIMcU9HwDYvtW+BxjasPfY=";
           };
         in {
+          inherit (python.pkgs) annotated-types black click isort paramiko pyyaml shellingham;
+
           bcrypt = let
             cargoVendor = pkgs.rustPlatform.fetchCargoVendor {
               pname = "bcrypt";
@@ -143,6 +145,8 @@
             pythonImportsCheck = ["packaging"];
           };
 
+          pre-commit = python.pkgs.toPythonModule pkgs.pre-commit;
+
           typer = python.pkgs.buildPythonPackage rec {
             pname = "typer";
             version = "0.12.5";
@@ -161,14 +165,6 @@
             doCheck = false;
             pythonImportsCheck = ["typer"];
           };
-
-          annotated-types = python.pkgs.annotated-types;
-          black = python.pkgs.black;
-          click = python.pkgs.click;
-          paramiko = python.pkgs.paramiko;
-          pre-commit = python.pkgs.toPythonModule pkgs.pre-commit;
-          pyyaml = python.pkgs.pyaml;
-          shellingham = python.pkgs.shellingham;
         });
       };
 
