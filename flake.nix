@@ -79,6 +79,7 @@
             click
             isort
             markdown-it-py
+            mypy
             paramiko
             pyyaml
             shellingham
