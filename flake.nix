@@ -72,7 +72,17 @@
             hash = "sha256-UyBXF+x7ouigsQ7HvKdUZnIMcU9HwDYvtW+BxjasPfY=";
           };
         in {
-          inherit (python.pkgs) annotated-types black click isort paramiko pyyaml shellingham;
+          inherit
+            (python.pkgs)
+            annotated-types
+            black
+            click
+            isort
+            markdown-it-py
+            paramiko
+            pyyaml
+            shellingham
+            ;
 
           bcrypt = let
             cargoVendor = pkgs.rustPlatform.fetchCargoVendor {
