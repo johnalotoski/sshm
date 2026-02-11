@@ -1,194 +1,112 @@
 {
-  description = "Standalone flake for packaging sshm via poetry2nix";
+  description = "Packaging sshm (SSH Manager) using uv2nix";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-    flake-utils.url = "github:numtide/flake-utils";
-    poetry2nix.url = "github:nix-community/poetry2nix";
-    treefmt-nix.url = "github:numtide/treefmt-nix";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.uv2nix.follows = "uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
-    self,
     nixpkgs,
-    flake-utils,
-    poetry2nix,
-    treefmt-nix,
-  }:
-    flake-utils.lib.eachDefaultSystem (system: let
-      cargoShim = final: prev: {
-        rustPlatform =
-          prev.rustPlatform
-          // {
-            fetchCargoTarball = args: let
-              # Prefer explicit `hash`, else fall back to legacy `sha256`
-              h =
-                if args ? hash
-                then args.hash
-                else if args ? sha256
-                then args.sha256
-                else throw "rustPlatform.fetchCargoTarball shim: missing `hash`/`sha256`";
-              cleaned = builtins.removeAttrs (args // {hash = h;}) ["sha256"];
-            in
-              prev.rustPlatform.fetchCargoVendor cleaned;
-          };
-      };
+    pyproject-build-systems,
+    pyproject-nix,
+    uv2nix,
+    ...
+  }: let
+    inherit (nixpkgs) lib;
+    forAllSystems = lib.genAttrs lib.systems.flakeExposed;
 
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [
-          poetry2nix.overlays.default
-          cargoShim
-        ];
-      };
+    workspace = uv2nix.lib.workspace.loadWorkspace {workspaceRoot = ./.;};
 
-      p2n = pkgs.poetry2nix;
-      python = pkgs.python312;
+    overlay = workspace.mkPyprojectOverlay {
+      sourcePreference = "wheel";
+    };
 
-      sshmSrc = pkgs.fetchFromGitHub {
-        owner = "palace22";
-        repo = "sshm";
-        rev = "7e6443c303448913beaaa08888d3074d0d170a9d";
-        sha256 = "sha256-w6LxCPz2zMWyfrTvzT0Db9uzyoROshtUSaFdBxMWd6E=";
-      };
+    # Suppress uv SSL_CERT_FILE warning in Nix sandbox
+    suppressSslWarning = old: {
+      preBuild = (old.preBuild or "") + ''
+        unset SSL_CERT_FILE
+      '';
+    };
 
-      sshmApp = p2n.mkPoetryApplication {
-        projectDir = sshmSrc;
-        preferWheels = true;
+    # Upstream sshm uses poetry as its build backend
+    buildSystemOverrides = final: prev: {
+      sshm = prev.sshm.overrideAttrs (old:
+        {
+          nativeBuildInputs = (old.nativeBuildInputs or []) ++ [final.poetry-core];
+        }
+        // suppressSslWarning old);
 
-        overrides = p2n.overrides.withoutDefaults (self: super: let
-          bcryptVersion = "4.2.0";
+      sshm-wrapper = prev.sshm-wrapper.overrideAttrs suppressSslWarning;
+    };
 
-          bcryptSdist = python.pkgs.fetchPypi {
-            pname = "bcrypt";
-            version = bcryptVersion;
-            hash = "sha256-z2nq9Rhf1Y8mj4BbUFzjH5ufwtZLN2ZCFk6SRFQMEiE=";
-          };
+    pythonSets = forAllSystems (system: let
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
+      (pkgs.callPackage pyproject-nix.build.packages {python = pkgs.python312;}).overrideScope (
+        lib.composeManyExtensions [
+          pyproject-build-systems.overlays.wheel
+          overlay
+          buildSystemOverrides
+        ]
+      ));
+  in {
+    packages = forAllSystems (system: let
+      pkgs = nixpkgs.legacyPackages.${system};
+      pythonSet = pythonSets.${system};
+      venv = pythonSet.mkVirtualEnv "sshm-env" workspace.deps.default;
 
-          bcryptRepo = pkgs.fetchFromGitHub {
-            owner = "pyca";
-            repo = "bcrypt";
-            rev = "4.2.0";
-            hash = "sha256-UyBXF+x7ouigsQ7HvKdUZnIMcU9HwDYvtW+BxjasPfY=";
-          };
-        in {
-          bcrypt = let
-            cargoVendor = pkgs.rustPlatform.fetchCargoVendor {
-              pname = "bcrypt";
-              version = bcryptVersion;
+      # Wrap venv to expose only sshm binary and add shell completions
+      sshm = pkgs.stdenv.mkDerivation {
+        pname = "sshm";
+        inherit (pythonSet.sshm) version;
+        dontUnpack = true;
+        nativeBuildInputs = [pkgs.installShellFiles];
+        installPhase = ''
+          mkdir -p $out/bin
+          ln -s ${venv}/bin/sshm $out/bin/sshm
 
-              # The repo contains src/_bcrypt/Cargo.lock
-              src = bcryptRepo;
-
-              # Important for pyca/bcrypt layout
-              cargoRoot = "src/_bcrypt";
-              hash = "sha256-TD1Qacr2BS3CutGzDcUSweTrlMuKy0U/eIS/oBLxTlI=";
-            };
-          in
-            python.pkgs.buildPythonPackage {
-              pname = "bcrypt";
-              version = bcryptVersion;
-              src = bcryptSdist;
-
-              # PEP 517 build (setuptools-rust), not legacy setuptools
-              pyproject = true;
-              nativeBuildInputs = [
-                pkgs.rustc
-                pkgs.cargo
-                pkgs.pkg-config
-                python.pkgs.setuptools-rust
-                python.pkgs.setuptools
-                python.pkgs.wheel
-              ];
-
-              # Create a local Cargo config that replaces crates.io with the vendored tree
-              postPatch = ''
-                  mkdir -p .cargo
-                  cat > .cargo/config.toml <<EOF
-                [source.crates-io]
-                replace-with = "vendored-sources"
-
-                [registries.crates-io]
-                protocol = "sparse"
-
-                [source.vendored-sources]
-                directory = "${cargoVendor}"
-                EOF
-              '';
-
-              # Make sure Cargo stays offline
-              preBuild = ''
-                export CARGO_NET_OFFLINE=true
-              '';
-
-              # Still attach cargoDeps so Nix tracks the vendor tree as an input
-              cargoRoot = "src/_bcrypt";
-              cargoDeps = cargoVendor;
-
-              doCheck = false;
-              pythonImportsCheck = ["bcrypt"];
-            };
-
-          # Packaging uses pyproject/flit (no setup.py)
-          packaging = python.pkgs.buildPythonPackage rec {
-            pname = "packaging";
-            version = "24.2";
-            src = python.pkgs.fetchPypi {
-              inherit pname version;
-              hash = "sha256-wiim3F6TLTRrxXOTeRCdSeiFPdgiNXHHxbVSYO3AuX8=";
-            };
-            pyproject = true;
-            nativeBuildInputs = [python.pkgs.flit-core];
-            doCheck = false;
-            pythonImportsCheck = ["packaging"];
-          };
-        });
-      };
-
-      sshm = sshmApp.overrideAttrs (old: {
-        nativeBuildInputs = (old.nativeBuildInputs or []) ++ [pkgs.installShellFiles];
-
-        postInstall =
-          (old.postInstall or "")
-          + ''
-            if [ -x "$out/bin/sshm" ]; then
-              installShellCompletion --cmd sshm --bash <($out/bin/sshm --show-completion bash)
-            fi
-          '';
-      });
-
-      treefmtEval = treefmt-nix.lib.evalModule pkgs {
-        projectRootFile = "flake.nix";
-        programs.alejandra.enable = true;
+          # Generate shell completions (typer-based CLI)
+          installShellCompletion --cmd sshm \
+            --bash <(${venv}/bin/sshm --show-completion bash) \
+            --zsh <(${venv}/bin/sshm --show-completion zsh) \
+            --fish <(${venv}/bin/sshm --show-completion fish)
+        '';
+        meta = {
+          description = "A modern command-line tool to manage SSH connections with style";
+          homepage = "https://github.com/palace22/sshm";
+          license = lib.licenses.gpl3Only;
+          maintainers = ["johnalotoski"];
+          mainProgram = "sshm";
+          platforms = lib.platforms.unix;
+        };
       };
     in {
-      packages = {
-        inherit sshm;
-        default = sshm;
-      };
+      inherit sshm;
+      default = sshm;
+    });
 
-      devShells.default = pkgs.mkShell {
-        packages = with pkgs; [
-          alejandra
-          icdiff
-          treefmtEval.config.package
-          sshm
-        ];
-
-        shellHook = ''
-          if ! [ -f treefmt.toml ]; then
-            echo "Copying treefmt.toml"
-            cp -f ${treefmtEval.config.build.configFile} treefmt.toml
-          else
-            if ! $(cmp -s ${treefmtEval.config.build.configFile} treefmt.toml); then
-              echo "Re-copying treefmt.toml for an update.  The difference between old and new treefmt.toml is:"
-              icdiff treefmt.toml ${treefmtEval.config.build.configFile}
-              cp -f ${treefmtEval.config.build.configFile} treefmt.toml
-            else
-              echo "treefmt.toml is up to date"
-            fi
-          fi
-        '';
+    devShells = forAllSystems (system: {
+      default = nixpkgs.legacyPackages.${system}.mkShell {
+        packages = with nixpkgs.legacyPackages.${system}; [python312 uv];
       };
     });
+  };
 }

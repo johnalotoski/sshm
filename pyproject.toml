@@ -1,0 +1,30 @@
+[project]
+name = "sshm-wrapper"
+version = "0.1.0"
+description = "Nix packaging wrapper for sshm (SSH Manager)"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
+dependencies = [
+    "sshm @ git+https://github.com/palace22/sshm.git@7e6443c303448913beaaa08888d3074d0d170a9d",
+    # Constrain click to match sshm's requirements (typer/click compatibility)
+    "click>=8.0.0,<8.2.0",
+]
+
+[project.scripts]
+sshm = "sshm.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["sshm_wrapper"]
+
+[tool.uv.sources]
+sshm = { git = "https://github.com/palace22/sshm.git", rev = "7e6443c303448913beaaa08888d3074d0d170a9d" }
+
+[tool.uv]
+extra-build-dependencies = { sshm = ["poetry-core>=1.0.0"] }
